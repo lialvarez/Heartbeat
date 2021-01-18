@@ -1,6 +1,8 @@
 package com.example.heartbeat;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
+import androidx.cardview.widget.CardView;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import android.bluetooth.BluetoothAdapter;
@@ -10,10 +12,17 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
 
@@ -25,38 +34,118 @@ import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet;
 
+import org.w3c.dom.Text;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
     Button toggleBtn;
     LineChart ecgChart, oxiChart;
-    TextView statusLabel, pulseText, spO2Text, tempText;
+    TextView pulseText, spO2Text, tempText;
+    TextView pulseTitle, spO2Title, tempTitle;
+    TextView bpmTextView, percentageTextView, degreeTextView;
+    CardView pulseCard, spO2Card, tempCard;
     BluetoothDevice mBTDevice;
     static final UUID myUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     static final String address = "98:D3:91:FD:A1:D5";
     BluetoothConnectionService mBluetoothConnection;
     boolean connected = false;
+    // Variable que indica si alguna medicion esta generando alarma.
+    boolean pulseAlarm, spO2Alarm, tempAlarm, alarmSoundOn;
+    Uri notification;
+    Ringtone r;
+    // Variable que indica si el toggle de la alarma debe colorear o no (para que esten sincronizados)
+    boolean highlightAlarm;
+    // Color original y de highlight del texto de las lecturas
+    int baseColor, highlightColor, baseCardColor, highlightCardColor, whiteColor, baseButtonColor, buttonBaseTextColor;
 
-
+    private enum Measurement{
+        ECG,
+        OXIMETER,
+        PULSE,
+        SPO2,
+        TEMPERATURE
+    }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        //Disable dark mode
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
+
         // Retrieve UI elements
         ecgChart = (LineChart) findViewById(R.id.ecgLineChart);
         oxiChart = (LineChart) findViewById(R.id.oximeterLineChart);
         toggleBtn = (Button) findViewById(R.id.toggleConnectionButton);
-        statusLabel = (TextView) findViewById(R.id.statusLabelTextView);
         ecgChart = (LineChart) findViewById(R.id.ecgLineChart);
         oxiChart = (LineChart) findViewById(R.id.oximeterLineChart);
         pulseText = (TextView) findViewById(R.id.pulseTextView);
         tempText = (TextView) findViewById(R.id.temperatureTextView);
         spO2Text = (TextView) findViewById(R.id.spO2TextView);
+        pulseCard = (CardView) findViewById(R.id.pulseCadView);
+        spO2Card = (CardView) findViewById(R.id.spO2CardView);
+        tempCard = (CardView) findViewById(R.id.temperatureCardView);
+        pulseTitle = (TextView) findViewById(R.id.pulseTitleTextView);
+        spO2Title = (TextView) findViewById(R.id.spO2TitleTextView);
+        tempTitle = (TextView) findViewById(R.id.temperatureTitleTextView);
+        bpmTextView = (TextView) findViewById(R.id.bpmTextView);
+        percentageTextView = (TextView) findViewById(R.id.percentTextView);
+        degreeTextView = (TextView) findViewById(R.id.degreesTextView);
 
+        pulseCard.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cardClicked(Measurement.PULSE);
+            }
+        });
+
+
+        spO2Card.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cardClicked(Measurement.SPO2);
+            }
+        });
+
+
+        tempCard.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cardClicked(Measurement.TEMPERATURE);
+            }
+        });
+
+
+        // initialize alarms
+        pulseAlarm = true;
+        spO2Alarm = false;
+        tempAlarm = false;
+        highlightAlarm = false;
+        alarmSoundOn = false;
+
+        notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        r = RingtoneManager.getRingtone(getApplicationContext(), notification);
+
+        baseColor = pulseText.getCurrentTextColor();
+        highlightColor = 0xFFFF0000;
+        baseCardColor = pulseCard.getCardBackgroundColor().getDefaultColor();
+        highlightCardColor = 0xFFed0027;
+        whiteColor = 0xFFFFFFFF;
+        Drawable bg = toggleBtn.getBackground();
+        if (bg instanceof ColorDrawable){
+            baseButtonColor = ((ColorDrawable) bg).getColor();
+        }
+        buttonBaseTextColor = toggleBtn.getCurrentTextColor();
+
+
+
+        // Setup charts
 
         ecgChart.setScaleEnabled(false);
         ecgChart.setDrawGridBackground(false);
@@ -111,7 +200,6 @@ public class MainActivity extends AppCompatActivity {
         LocalBroadcastManager.getInstance(this).registerReceiver(mReceiverNewData,
                 new IntentFilter("newData"));
 
-
         //Link toggleButton
         toggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -123,6 +211,31 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    private void cardClicked(Measurement measurement){
+        switch (measurement){
+            case PULSE:
+                pulseCard.setCardBackgroundColor(baseCardColor);
+                pulseText.setTextColor(baseColor);
+                pulseTitle.setTextColor(baseColor);
+                bpmTextView.setTextColor(baseColor);
+                break;
+            case SPO2:
+                spO2Card.setCardBackgroundColor(baseCardColor);
+                spO2Text.setTextColor(baseColor);
+                spO2Title.setTextColor(baseColor);
+                percentageTextView.setTextColor(baseColor);
+                break;
+            case TEMPERATURE:
+                tempCard.setCardBackgroundColor(baseCardColor);
+                tempText.setTextColor(baseColor);
+                tempTitle.setTextColor(baseColor);
+                degreeTextView.setTextColor(baseColor);
+                break;
+            default:
+                break;
+        }
     }
 
     BroadcastReceiver mReceiverNewData = new BroadcastReceiver() {
@@ -152,9 +265,85 @@ public class MainActivity extends AppCompatActivity {
             case 'T':
                 tempText.setText(String.valueOf(unpackFloatValue(data)));
                 break;
+            case 'A':
+                alarmHandler(new String(data));
+                break;
             default:
                 break;
         }
+    }
+
+    private void alarmHandler(String message) {
+        char source = message.charAt(0);
+        switch (source){
+            case 'P':
+                if (message.charAt(1) == 'S'){
+                    setCardAlarm(Measurement.PULSE, true);
+                }else if (message.charAt(1) == 'R'){
+                    setCardAlarm(Measurement.PULSE, false);
+                }
+                break;
+            case 'S':
+                if (message.charAt(1) == 'S'){
+                    setCardAlarm(Measurement.SPO2, true);
+                }else if (message.charAt(1) == 'R'){
+                    setCardAlarm(Measurement.SPO2, false);
+                }
+                break;
+            case 'T':
+                if (message.charAt(1) == 'S'){
+                    setCardAlarm(Measurement.TEMPERATURE, true);
+                }else if (message.charAt(1) == 'R'){
+                    setCardAlarm(Measurement.TEMPERATURE, false);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void setCardAlarm(Measurement meas, boolean set) {
+        int cardColor = set ? highlightCardColor : baseCardColor;
+        int textColor = set ? whiteColor : baseColor;
+        TextView title = null;
+        TextView unit = null;
+        TextView value = null;
+        CardView card = null;
+        switch (meas){
+            case PULSE:
+                pulseAlarm = set;
+                card = pulseCard;
+                title = pulseTitle;
+                unit = bpmTextView;
+                value = pulseText;
+                break;
+            case SPO2:
+                pulseAlarm = set;
+                card = spO2Card;
+                title = spO2Title;
+                unit = percentageTextView;
+                value = spO2Text;
+                break;
+            case TEMPERATURE:
+                pulseAlarm = set;
+                card = tempCard;
+                title = tempTitle;
+                unit = degreeTextView;
+                value = tempText;
+                break;
+            default:
+                break;
+        }
+        if (card != null && title != null && unit != null && value != null){
+            card.setCardBackgroundColor(cardColor);
+            title.setTextColor(textColor);
+            unit.setTextColor(textColor);
+            value.setTextColor(textColor);
+        }
+        if(set){
+            r.play();
+        }
+
     }
 
     private float unpackFloatValue(byte[] data) {
@@ -169,12 +358,14 @@ public class MainActivity extends AppCompatActivity {
             if (text.equals("connected")) {
                 connected = true;
                 toggleBtn.setText(R.string.disconnect);
-                statusLabel.setText(R.string.status_connected);
+                toggleBtn.setBackgroundColor(highlightCardColor);
+                toggleBtn.setTextColor(whiteColor);
             }
             if (text.equals("disconnected")) {
                 connected = false;
                 toggleBtn.setText(R.string.connect);
-                statusLabel.setText(R.string.status_disconnected);
+                toggleBtn.setBackgroundColor(baseButtonColor);
+                toggleBtn.setTextColor(buttonBaseTextColor);
                 // TODO: manejar la desconexion asincronica.
             }
         }

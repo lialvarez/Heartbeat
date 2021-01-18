@@ -8,9 +8,12 @@ public class ReaderFSM {
     private static final int SPO2_TAG = 'S';
     private static final int PULSE_TAG = 'P';
     private static final int TEMP_TAG = 'T';
-    private static final int MIN_LENGTH = 2;
+    private static final int ALARM_TAG = 'A';
+    private static final int MIN_LENGTH = 1;
     private static final int MAX_LENGTH = 15;
     private static final String HEADER = "FFFF";
+
+
 
     private enum State {
         WAITING_HEADER,
@@ -117,7 +120,7 @@ public class ReaderFSM {
     }
 
     private boolean isTagValid(int _tag) {
-        return _tag == ECG_TAG || _tag == OX_TAG || _tag == SPO2_TAG || _tag == PULSE_TAG || _tag == TEMP_TAG;
+        return _tag == ECG_TAG || _tag == OX_TAG || _tag == SPO2_TAG || _tag == PULSE_TAG || _tag == TEMP_TAG || _tag == ALARM_TAG;
     }
 
     public char getTag(){
