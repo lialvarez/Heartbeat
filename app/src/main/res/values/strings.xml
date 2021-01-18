@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Heartbeat</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="status_connected">Status: Connected</string>
+    <string name="status_disconnected">Status: Disconnected</string>
+    <string name="temperature">Temperature</string>
+    <string name="spo2">SpO2</string>
+    <string name="pulse">Pulse</string>
+    <string name="bpm">bpm</string>
+    <string name="percentage">%</string>
+    <string name="celciuss">°C</string>
+</resources>
