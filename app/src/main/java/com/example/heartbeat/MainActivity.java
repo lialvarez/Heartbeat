@@ -238,6 +238,7 @@ public class MainActivity extends AppCompatActivity {
         set.setAxisDependency(YAxis.AxisDependency.LEFT);
         set.setValueTextSize(10f);
         set.setDrawCircles(false);
+        set.setDrawValues(false);
 
         return set;
     }
