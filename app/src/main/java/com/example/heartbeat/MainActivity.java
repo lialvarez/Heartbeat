@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatDelegate;
 import androidx.cardview.widget.CardView;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import android.app.ActivityManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
@@ -25,6 +26,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.Description;
@@ -38,12 +40,17 @@ import org.w3c.dom.Text;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
+    private static final int REQ_BT_ENABLE = 1;
     Button toggleBtn;
     LineChart ecgChart, oxiChart;
     TextView pulseText, spO2Text, tempText;
@@ -52,7 +59,12 @@ public class MainActivity extends AppCompatActivity {
     CardView pulseCard, spO2Card, tempCard;
     BluetoothDevice mBTDevice;
     static final UUID myUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-    static final String address = "98:D3:91:FD:A1:D5";
+    static final String address = "00:18:E4:35:11:C3";
+
+    static final int PLOT_MAX_SAMPLES = 200;
+    private List<Float> ecg_list = new ArrayList<>();
+    private List<Float> oxi_list = new ArrayList<>();
+
     BluetoothConnectionService mBluetoothConnection;
     boolean connected = false;
     // Variable que indica si alguna medicion esta generando alarma.
@@ -78,6 +90,13 @@ public class MainActivity extends AppCompatActivity {
 
         //Disable dark mode
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
+
+        BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        if (!mBluetoothAdapter.isEnabled()){
+            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            startActivityForResult(enableBtIntent, REQ_BT_ENABLE);
+            Toast.makeText(getApplicationContext(), "Enabling Bluetooth!!", Toast.LENGTH_LONG).show();
+        }
 
         // Retrieve UI elements
         ecgChart = (LineChart) findViewById(R.id.ecgLineChart);
@@ -165,6 +184,8 @@ public class MainActivity extends AppCompatActivity {
         ecgChart.getAxisRight().setDrawLabels(false);
         ecgChart.getAxisLeft().setDrawAxisLine(false);
         ecgChart.getAxisLeft().setDrawGridLines(false);
+        ecgChart.getAxisLeft().setAxisMinimum(0f);
+        ecgChart.getAxisLeft().setAxisMaximum(1f);
 
         ecgChart.invalidate();
 
@@ -186,6 +207,7 @@ public class MainActivity extends AppCompatActivity {
         oxiChart.getAxisRight().setDrawLabels(false);
         oxiChart.getAxisLeft().setDrawAxisLine(false);
         oxiChart.getAxisLeft().setDrawGridLines(false);
+
 
         oxiChart.invalidate();
 
@@ -212,6 +234,20 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode == REQ_BT_ENABLE){
+            if (resultCode == RESULT_OK){
+                Toast.makeText(getApplicationContext(), "BlueTooth is now Enabled", Toast.LENGTH_LONG).show();
+            }
+            if(resultCode == RESULT_CANCELED){
+                Toast.makeText(getApplicationContext(), "Error occured while enabling.Leaving the application..", Toast.LENGTH_LONG).show();
+                ///finish();
+            }
+        }
+    }//onActivityResult
 
     private void cardClicked(Measurement measurement){
         switch (measurement){
@@ -249,12 +285,28 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateData(char tag, byte[] data) {
         //TODO: desenpaquetar la data
+        float max;
+        float min;
         switch (tag){
             case 'E':
-                addEntry(ecgChart, unpackFloatValue(data));
+                addEntry(ecgChart, unpackFloatValue(data), 400);
+                ecg_list.add(unpackFloatValue(data));
+                if(ecg_list.size() > 400)
+                    ecg_list.remove(0);
+                max = Collections.max(ecg_list);
+                min = Collections.min(ecg_list);
+                ecgChart.getAxisLeft().setAxisMaximum(max);
+                ecgChart.getAxisLeft().setAxisMinimum(min);
                 break;
             case 'O':
-                addEntry(oxiChart, unpackFloatValue(data));
+                addEntry(oxiChart, unpackFloatValue(data), 200);
+                oxi_list.add(unpackFloatValue(data));
+                if(oxi_list.size() > 200)
+                    oxi_list.remove(0);
+                max = Collections.max(oxi_list);
+                min = Collections.min(oxi_list);
+                oxiChart.getAxisLeft().setAxisMaximum(max);
+                oxiChart.getAxisLeft().setAxisMinimum(min);
                 break;
             case 'P':
                 pulseText.setText(String.valueOf((int)unpackFloatValue(data)));
@@ -263,7 +315,7 @@ public class MainActivity extends AppCompatActivity {
                 spO2Text.setText(String.valueOf((int)unpackFloatValue(data)));
                 break;
             case 'T':
-                tempText.setText(String.valueOf(unpackFloatValue(data)));
+                tempText.setText(String.format("%.1f", unpackFloatValue(data)));
                 break;
             case 'A':
                 alarmHandler(new String(data));
@@ -387,7 +439,7 @@ public class MainActivity extends AppCompatActivity {
         mBluetoothConnection.startClient(device,uuid);
     }
 
-    private void addEntry(LineChart chart, float value) {
+    private void addEntry(LineChart chart, float value, int plot_span) {
 
         LineData data = chart.getData();
 
@@ -395,6 +447,7 @@ public class MainActivity extends AppCompatActivity {
             data = new LineData();
             chart.setData(data);
         }
+
 
         ILineDataSet set = data.getDataSetByIndex(0);
         // set.addEntry(...); // can be called as well
@@ -414,7 +467,7 @@ public class MainActivity extends AppCompatActivity {
         // let the chart know it's data has changed
         chart.notifyDataSetChanged();
 
-        chart.setVisibleXRangeMaximum(200);
+        chart.setVisibleXRangeMaximum(plot_span);
         chart.moveViewTo(data.getEntryCount() - 7, 50f, YAxis.AxisDependency.LEFT);
     }
 

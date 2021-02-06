@@ -1,4 +1,5 @@
 package com.example.heartbeat;
+import android.app.Activity;
 import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -16,6 +17,8 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.UUID;
 
+import static androidx.core.app.ActivityCompat.startActivityForResult;
+
 /**
  * Created by User on 12/21/2016.
  */
@@ -27,6 +30,7 @@ public class BluetoothConnectionService {
 
     private static final UUID MY_UUID_INSECURE =
             UUID.fromString("8ce255c0-200a-11e0-ac64-0800200c9a66");
+
 
     private final BluetoothAdapter mBluetoothAdapter;
     Context mContext;

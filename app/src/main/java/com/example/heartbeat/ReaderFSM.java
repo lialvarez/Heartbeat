@@ -11,7 +11,7 @@ public class ReaderFSM {
     private static final int ALARM_TAG = 'A';
     private static final int MIN_LENGTH = 1;
     private static final int MAX_LENGTH = 15;
-    private static final String HEADER = "FFFF";
+    private static final String HEADER = "F";
 
 
 
@@ -20,7 +20,7 @@ public class ReaderFSM {
         WAITING_TAG,
         WAITING_LENGTH,
         WAITING_DATA
-    };
+    }
 
     private enum Event {
         TAG_RECEIVED,
@@ -50,7 +50,7 @@ public class ReaderFSM {
     }
 
     boolean packageCompleted(int newByte){
-        boolean ret = false;
+        boolean ret;
         switch (current_state){
             case WAITING_HEADER:
                 if(newByte == 'F'){
@@ -61,8 +61,7 @@ public class ReaderFSM {
                     } else if(header_count > 4){
                         data_counter = 0;
                         current_state = State.WAITING_HEADER;
-                        for (int i = 0; i < header_buffer.length; i++)
-                            header_buffer[i] = 0;
+                        Arrays.fill(header_buffer, (char) 0);
                     }
                 }else{
                     header_count = 0;
