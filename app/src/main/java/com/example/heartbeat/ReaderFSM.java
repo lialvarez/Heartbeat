@@ -9,6 +9,7 @@ public class ReaderFSM {
     private static final int PULSE_TAG = 'P';
     private static final int TEMP_TAG = 'T';
     private static final int ALARM_TAG = 'A';
+    private static final int ERROR_TAG = 'W';
     private static final int MIN_LENGTH = 1;
     private static final int MAX_LENGTH = 15;
     private static final String HEADER = "F";
@@ -115,11 +116,12 @@ public class ReaderFSM {
     }
 
     private boolean isLengthValid(int _length) {
-        return _length > MIN_LENGTH && _length < MAX_LENGTH;
+        return _length >= MIN_LENGTH && _length <= MAX_LENGTH;
     }
 
     private boolean isTagValid(int _tag) {
-        return _tag == ECG_TAG || _tag == OX_TAG || _tag == SPO2_TAG || _tag == PULSE_TAG || _tag == TEMP_TAG || _tag == ALARM_TAG;
+        return _tag == ECG_TAG || _tag == OX_TAG || _tag == SPO2_TAG || _tag == PULSE_TAG
+                || _tag == TEMP_TAG || _tag == ALARM_TAG || _tag == ERROR_TAG;
     }
 
     public char getTag(){

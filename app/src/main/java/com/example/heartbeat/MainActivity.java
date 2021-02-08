@@ -60,10 +60,17 @@ public class MainActivity extends AppCompatActivity {
     BluetoothDevice mBTDevice;
     static final UUID myUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     static final String address = "00:18:E4:35:11:C3";
+    static int ecg_count = 0;
+    private List<Float> avrg_ecg = new ArrayList<>();
 
     static final int PLOT_MAX_SAMPLES = 200;
     private List<Float> ecg_list = new ArrayList<>();
     private List<Float> oxi_list = new ArrayList<>();
+
+    static final int OXIMETER_SAMPLE_RATE = 25;
+    static final int ECG_SAMPLE_RATE = 180;
+
+    static final int PLOT_SPAN_SECONDS = 3;
 
     BluetoothConnectionService mBluetoothConnection;
     boolean connected = false;
@@ -117,30 +124,6 @@ public class MainActivity extends AppCompatActivity {
         percentageTextView = (TextView) findViewById(R.id.percentTextView);
         degreeTextView = (TextView) findViewById(R.id.degreesTextView);
 
-        pulseCard.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                cardClicked(Measurement.PULSE);
-            }
-        });
-
-
-        spO2Card.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                cardClicked(Measurement.SPO2);
-            }
-        });
-
-
-        tempCard.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                cardClicked(Measurement.TEMPERATURE);
-            }
-        });
-
-
         // initialize alarms
         pulseAlarm = true;
         spO2Alarm = false;
@@ -184,8 +167,6 @@ public class MainActivity extends AppCompatActivity {
         ecgChart.getAxisRight().setDrawLabels(false);
         ecgChart.getAxisLeft().setDrawAxisLine(false);
         ecgChart.getAxisLeft().setDrawGridLines(false);
-        ecgChart.getAxisLeft().setAxisMinimum(0f);
-        ecgChart.getAxisLeft().setAxisMaximum(1f);
 
         ecgChart.invalidate();
 
@@ -249,31 +230,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }//onActivityResult
 
-    private void cardClicked(Measurement measurement){
-        switch (measurement){
-            case PULSE:
-                pulseCard.setCardBackgroundColor(baseCardColor);
-                pulseText.setTextColor(baseColor);
-                pulseTitle.setTextColor(baseColor);
-                bpmTextView.setTextColor(baseColor);
-                break;
-            case SPO2:
-                spO2Card.setCardBackgroundColor(baseCardColor);
-                spO2Text.setTextColor(baseColor);
-                spO2Title.setTextColor(baseColor);
-                percentageTextView.setTextColor(baseColor);
-                break;
-            case TEMPERATURE:
-                tempCard.setCardBackgroundColor(baseCardColor);
-                tempText.setTextColor(baseColor);
-                tempTitle.setTextColor(baseColor);
-                degreeTextView.setTextColor(baseColor);
-                break;
-            default:
-                break;
-        }
-    }
-
     BroadcastReceiver mReceiverNewData = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -289,9 +245,10 @@ public class MainActivity extends AppCompatActivity {
         float min;
         switch (tag){
             case 'E':
-                addEntry(ecgChart, unpackFloatValue(data), 400);
+                addEntry(ecgChart, unpackFloatValue(data),
+                        PLOT_SPAN_SECONDS * ECG_SAMPLE_RATE);
                 ecg_list.add(unpackFloatValue(data));
-                if(ecg_list.size() > 400)
+                if(ecg_list.size() > PLOT_SPAN_SECONDS * ECG_SAMPLE_RATE)
                     ecg_list.remove(0);
                 max = Collections.max(ecg_list);
                 min = Collections.min(ecg_list);
@@ -299,9 +256,10 @@ public class MainActivity extends AppCompatActivity {
                 ecgChart.getAxisLeft().setAxisMinimum(min);
                 break;
             case 'O':
-                addEntry(oxiChart, unpackFloatValue(data), 200);
+                addEntry(oxiChart, unpackFloatValue(data),
+                        PLOT_SPAN_SECONDS * OXIMETER_SAMPLE_RATE);
                 oxi_list.add(unpackFloatValue(data));
-                if(oxi_list.size() > 200)
+                if(oxi_list.size() > PLOT_SPAN_SECONDS * OXIMETER_SAMPLE_RATE)
                     oxi_list.remove(0);
                 max = Collections.max(oxi_list);
                 min = Collections.min(oxi_list);
@@ -319,6 +277,29 @@ public class MainActivity extends AppCompatActivity {
                 break;
             case 'A':
                 alarmHandler(new String(data));
+                break;
+            case 'W':
+                errorHandler(new String(data));
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void errorHandler(String message) {
+        char source = message.charAt(0);
+        switch (source){
+            case 'P':
+                pulseText.setText("");
+                setCardAlarm(Measurement.PULSE, false);
+                break;
+            case 'S':
+                spO2Text.setText("");
+                setCardAlarm(Measurement.SPO2, false);
+                break;
+            case 'T':
+                tempText.setText("");
+                setCardAlarm(Measurement.TEMPERATURE, false);
                 break;
             default:
                 break;
@@ -363,6 +344,8 @@ public class MainActivity extends AppCompatActivity {
         CardView card = null;
         switch (meas){
             case PULSE:
+                if(!pulseAlarm && set)
+                    r.play();
                 pulseAlarm = set;
                 card = pulseCard;
                 title = pulseTitle;
@@ -370,14 +353,18 @@ public class MainActivity extends AppCompatActivity {
                 value = pulseText;
                 break;
             case SPO2:
-                pulseAlarm = set;
+                if(!spO2Alarm && set)
+                    r.play();
+                spO2Alarm = set;
                 card = spO2Card;
                 title = spO2Title;
                 unit = percentageTextView;
                 value = spO2Text;
                 break;
             case TEMPERATURE:
-                pulseAlarm = set;
+                if(!tempAlarm && set)
+                    r.play();
+                tempAlarm = set;
                 card = tempCard;
                 title = tempTitle;
                 unit = degreeTextView;
@@ -392,10 +379,6 @@ public class MainActivity extends AppCompatActivity {
             unit.setTextColor(textColor);
             value.setTextColor(textColor);
         }
-        if(set){
-            r.play();
-        }
-
     }
 
     private float unpackFloatValue(byte[] data) {
